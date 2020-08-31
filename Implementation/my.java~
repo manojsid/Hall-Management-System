@@ -1,0 +1,274 @@
+
+
+package BillBoard;
+
+import java.awt.*;
+import java.awt.image.ImageObserver;
+import java.net.URL;
+
+public class DynamicBillBoard extends java.applet.Applet implements Runnable {
+
+  Thread kicker = null;
+  public Image image = null;
+  BillTransition transition = null;
+
+  public int current_billboard;
+  public int next_billboard;
+  int number_of_billboards;
+  int number_of_transition_types;
+  int current_transition_type;
+  long delay;
+  boolean mouse_inside_applet;
+  boolean mouse_down;
+
+  public BillData billboards[];
+  String transition_classes[];
+
+  public void init() {
+       String s = getParameter("billboards");
+    number_of_billboards = Integer.parseInt(s);
+
+    
+    billboards = new BillData[number_of_billboards];
+
+ 
+    current_billboard = next_billboard =
+              (int)(Math.random() * number_of_billboards);
+
+    
+    parseBillData();
+
+    delay = -1;
+  }
+
+  public void finishInit() {
+   
+    if(delay != -1) {
+      return;
+    }    
+
+   
+    String s = getParameter("delay");
+    delay = Long.parseLong(s);
+
+  
+    s = getParameter("transitions");
+    int field_end = s.indexOf(",");
+    number_of_transition_types = Integer.parseInt(s.substring(0, field_end));
+
+    
+    transition_classes = new String[number_of_transition_types];
+    for(int t = 0; t < number_of_transition_types - 1; ++t) {
+      s = s.substring(field_end + 1);
+      field_end = s.indexOf(",");
+      transition_classes[t] = s.substring(0, field_end);
+    }
+    transition_classes[number_of_transition_types - 1] =
+              s.substring(field_end + 1);
+
+    
+    billboards[next_billboard].initPixels(size().width, size().height);
+
+    mouse_inside_applet = false;
+  }
+
+  public void start() {
+    if(kicker == null) {
+
+      
+      BillTransition.initClass(this);
+
+      
+      next_billboard = current_billboard;
+      
+      
+      image = billboards[current_billboard].image;
+
+       
+      transition = null;
+
+      kicker = new Thread(this);
+      kicker.start();
+    }
+  }
+
+  public void stop() {
+    if(kicker != null) {
+      kicker.stop();
+      kicker = null;
+    }
+  }
+
+  
+  public boolean mouseMove(Event evt, int x, int y) {
+    
+    if(billboards[current_billboard].link == null) {
+      return true;
+    }
+    mouse_inside_applet = true;
+    showStatus(billboards[current_billboard].link.toString());
+    return true;
+  }
+
+  public boolean mouseExit(Event evt, int x, int y) {
+    
+    if(billboards[current_billboard].link == null) {
+      return true;
+    }
+    mouse_inside_applet = false;
+    showStatus("");
+    return true;
+  }
+
+  public boolean mouseUp(Event evt, int x, int y) {
+    
+    if(billboards[current_billboard].link == null) {
+      return false;
+    }
+
+    
+    kicker.stop();
+
+    getAppletContext().showDocument(billboards[current_billboard].link);
+    return true;
+  }
+
+  public void paint(Graphics g) {
+    g.drawImage(image, 0, 0, this);
+  }
+
+  public void update(Graphics g) {
+    paint(g);
+  }
+
+  void parseBillData() {
+
+    
+    String s = getParameter("bill" + next_billboard);
+    int field_end = s.indexOf(",");
+
+    
+    Image new_image = getImage(getDocumentBase(), s.substring(0, field_end));
+
+    
+    URL link;
+    try {
+      link = new URL(getDocumentBase(), s.substring(field_end + 1));
+    } catch (java.net.MalformedURLException e) {
+      link = null;
+    }
+
+    
+    billboards[next_billboard] = new BillData(link, new_image);
+
+    if(image == null) {
+      image = new_image;
+    }
+    else {
+      prepareImage(new_image, this);
+      billboards[next_billboard].initPixels(size().width, size().height);
+    }
+  }
+
+  public void run() {
+    
+    while((checkImage(image, this) & ImageObserver.ALLBITS) == 0) {
+      try {
+        Thread.sleep(600);
+      } catch (InterruptedException e) {}
+    }
+
+    
+    finishInit();
+
+    
+    long next_billboard_time;
+
+    while(Thread.currentThread() == kicker) {
+
+      
+      next_billboard_time = System.currentTimeMillis() + delay;
+
+      
+      current_billboard = next_billboard;
+      if(++next_billboard >= number_of_billboards) {
+        next_billboard = 0;
+      }
+
+      
+      if(billboards[next_billboard] == null) {
+
+        parseBillData();
+        try {
+          Thread.sleep(100);
+        }  catch (InterruptedException e) {}
+      }
+
+      
+      int transition_type;
+      do {
+        transition_type = (int)(Math.random() * number_of_transition_types);
+      } while(transition_type == current_transition_type);
+      current_transition_type = transition_type;
+
+      try {
+        transition = (BillTransition)Class.forName(transition_classes[
+                  current_transition_type]).newInstance();
+      }
+      catch(Exception e) {
+        
+        e.printStackTrace();
+      }
+
+      
+      if(       mouse_inside_applet == true && 
+                billboards[current_billboard].link != null) { 
+
+        showStatus(billboards[current_billboard].link.toString());
+      }
+
+      
+      if(System.currentTimeMillis() < next_billboard_time) {
+        try {
+          Thread.sleep(next_billboard_time - System.currentTimeMillis());
+        } catch (InterruptedException e) {}
+      }
+
+      
+      for(int f = 0; f < transition.number_of_frames; ++f) {
+
+         
+        image = transition.frames[f];
+
+       
+        paint(getGraphics());
+
+        try {
+          Thread.sleep(transition.delay);
+        } catch (InterruptedException e) {}
+      }
+      
+      
+      image = billboards[next_billboard].image;
+      
+      
+      paint(getGraphics());
+
+      
+      if(       mouse_inside_applet == true &&
+                billboards[next_billboard].link != null) {   
+      
+        showStatus(billboards[next_billboard].link.toString());   
+      }
+  
+      
+      transition.clearFrames();
+      transition = null;
+
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException e) {}
+    }
+  }
+}
+

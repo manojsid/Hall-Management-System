@@ -1,0 +1,14 @@
+  import.java.io.*;
+  public class s
+  {
+    public static void main(String args[])
+    {
+      if(0){
+        System.out.println("Sun");
+      }
+      else
+      {
+        System.out.println("Moon");
+      }
+    }
+    
